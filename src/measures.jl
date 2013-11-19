@@ -42,6 +42,21 @@ function _info_gain(labels0::Vector, labels1::Vector)
     return H
 end
 
+function _info_gain{T<:FloatingPoint}(labels0::Vector{T}, labels1::Vector{T})
+    s1=0.0
+    s2=0.0
+    mv0=majority_vote(labels0)
+    mv1=majority_vote(labels1)
+    for i=1:length(labels0)
+      s1=s1+abs(labels0[i]-mv0)
+    end
+    for i=1:length(labels1)
+      s2=s2+abs(labels1[i]-mv1)
+    end
+    loss = s1+s2;
+    return -loss
+end
+
 function _neg_z1_loss{T<:Real,S<:Any}(labels::Vector{S}, weights::Vector{T})
     missmatches = labels .!= majority_vote(labels)
     loss = sum(weights[missmatches])
@@ -53,7 +68,7 @@ function _neg_z1_loss{T<:Real,S<:FloatingPoint}(labels::Vector{S}, weights::Vect
     s2=0.0
     mv=majority_vote(labels)
     for i=1:length(labels)
-      s1=s1+(labels[i]-majority_vote(labels))^2*weights[i]
+      s1=s1+(labels[i]-mv)^2*weights[i]
       s2=s2+weights[i]
     end
     loss = s1/s2*length(labels)

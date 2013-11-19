@@ -52,10 +52,6 @@ function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights
     ndp= size(features,1)
     best = None
     best_val = -Inf
-    ##### WARNING remove the following line
-    weights=ones(Int,length(labels))
-    
-   ############
     if nsubfeatures > 0
         inds = randperm(nf)[1:nsubfeatures]
         nf = nsubfeatures
@@ -181,11 +177,15 @@ end
 
 function build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer, ntrees::Integer)
     Nlabels = length(labels)
-    Nsamples = int(0.7 * Nlabels)
+    #Nsamples = int(0.7 * Nlabels)
+    Nsamples=Nlabels
     forest = @parallel (vcat) for i in [1:ntrees]
         inds = rand(1:Nlabels, Nsamples)
-        build_tree(labels[inds], features[inds,:], nsubfeatures)
+        t=build_tree(labels[inds], features[inds,:], nsubfeatures)
+        ###OOB
+        
     end
+    
     return [forest]
 end
 

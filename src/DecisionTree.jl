@@ -46,7 +46,7 @@ function print_tree(tree::Union(Leaf,Node), indent::Integer)
 end
 print_tree(tree::Union(Leaf,Node)) = print_tree(tree, 0)
 
-function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights::Vector)
+function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights::Vector, method::Integer)
     nf = size(features,2)
     best = None
     best_val = -Inf

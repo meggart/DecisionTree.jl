@@ -42,13 +42,13 @@ function _info_gain(labels0::Vector, labels1::Vector)
     return H
 end
 
-function _neg_z1_loss{T<:Real}(labels::CategLabel, weights::Vector{T})
+function _neg_z1_loss{T<:Real,S<:Any}(labels::Vector{S}, weights::Vector{T})
     missmatches = labels .!= majority_vote(labels)
     loss = sum(weights[missmatches])
     return -loss
 end
 
-function _neg_z1_loss{T<:Real}(labels::ContLabel, weights::Vector{T})
+function _neg_z1_loss{T<:Real,S<:FloatingPoint}(labels::Vector{S}, weights::Vector{T})
     s1=0.0
     s2=0.0
     mv=majority_vote(labels)
@@ -82,6 +82,9 @@ function majority_vote(labels::Vector)
     return top_vote
 end
 
+function majority_vote{T<:FloatingPoint}(labels::Vector{T}) 
+     return mean(labels) 
+end
 
 function confusion_matrix(actual::Vector, predicted::Vector)
     @assert length(actual) == length(predicted)

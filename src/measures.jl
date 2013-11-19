@@ -42,13 +42,13 @@ function _info_gain(labels0::Vector, labels1::Vector)
     return H
 end
 
-function _neg_z1_loss{T<:Real}(labels::categoricalLabel, weights::Vector{T})
+function _neg_z1_loss{T<:Real}(labels::CategLabel, weights::Vector{T})
     missmatches = labels .!= majority_vote(labels)
     loss = sum(weights[missmatches])
     return -loss
 end
 
-function _neg_z1_loss{T<:Real}(labels::continousLabel, weights::Vector{T})
+function _neg_z1_loss{T<:Real}(labels::ContLabel, weights::Vector{T})
     s1=0.0
     s2=0.0
     mv=majority_vote(labels)

@@ -22,6 +22,17 @@ type Node
     right::Union(Leaf,Node)
 end
 
+abstract type TreeLabel
+
+type ContTarget 
+
+end
+
+type CategTarget
+
+end
+
+
 convert(::Type{Node}, x::Leaf) = Node(0, nothing, x, Leaf(nothing,[nothing]))
 promote_rule(::Type{Node}, ::Type{Leaf}) = Node
 promote_rule(::Type{Leaf}, ::Type{Node}) = Node
@@ -48,8 +59,12 @@ print_tree(tree::Union(Leaf,Node)) = print_tree(tree, 0)
 
 function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights::Vector, method::Integer)
     nf = size(features,2)
+    ndp= size(features,1)
     best = None
     best_val = -Inf
+    if method==2
+      if weights=[0]
+        weights=ones(Int,length(labels))
     if nsubfeatures > 0
         inds = randperm(nf)[1:nsubfeatures]
         nf = nsubfeatures
@@ -57,13 +72,20 @@ function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights
         inds = [1:nf]
     end
     for i in 1:nf
-        domain_i = sort(unique(features[:,inds[i]]))
+        if (ndp>100)
+          domain_i = quantile(features[:,inds[i]],linspace(0.0,1.0,100))
+        else
+          domain_i = sort(unique(features[:,inds[i]]))
+        end
         for d in domain_i[2:]
             cur_split = features[:,inds[i]] .< d
             if weights == [0]
-                value = _info_gain(labels[cur_split], labels[!cur_split])
+            	value = _info_gain(labels[cur_split], labels[!cur_split])
             else
-                value = _neg_z1_loss(labels[cur_split], weights[cur_split]) + _neg_z1_loss(labels[!cur_split], weights[!cur_split])
+            	value = _neg_z1_loss(labels[cur_split], weights[cur_split]) + _neg_z1_loss(labels[!cur_split], weights[!cur_split])
+            	end
+            else
+            	
             end
             if value > best_val
                 best_val = value

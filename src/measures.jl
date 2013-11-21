@@ -34,26 +34,36 @@ function _set_entropy(labels::Vector)
     return entropy
 end
 
-function _info_gain(labels0::Vector, labels1::Vector)
+function _info_gain(labels::Vector, featcur::Vector, d)
     N0 = length(labels0)
     N1 = length(labels1)
+    cur_split = featcur .< d
+    labels0=labels[cur_split]
+    labels1=labels[!cur_split]
     N = N0 + N1
     H = - N0/N * _set_entropy(labels0) - N1/N * _set_entropy(labels1)
     return H
 end
 
-function _info_gain{T<:FloatingPoint}(labels0::Vector{T}, labels1::Vector{T})
-    s1=0.0
-    s2=0.0
-    mv0=majority_vote(labels0)
-    mv1=majority_vote(labels1)
-    for i=1:length(labels0)
-      s1=s1+abs(labels0[i]-mv0)
+function _info_gain{T<:FloatingPoint}(labels::Vector{T}, featcur::Vector, d)
+    s1l=0.0
+    s1r=0.0
+    nl=0
+    s2l=0.0
+    s2r=0.0
+    nr=0
+    for i=1:length(labels)
+      if (featcur[i]<d)
+        s1l=s1l+labels[i]*labels[i]
+        s2l=s2l+labels[i]
+        nl=nl+1
+      else
+        s1r=s1r+labels[i]*labels[i]
+        s2r=s2r+labels[i]
+        nr=nr+1
+      end
     end
-    for i=1:length(labels1)
-      s2=s2+abs(labels1[i]-mv1)
-    end
-    loss = s1+s2;
+    loss = s1l - s2l*s2l/nl + s1r - s2r*s2r/nr;
     return -loss
 end
 

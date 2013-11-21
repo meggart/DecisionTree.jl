@@ -1,5 +1,6 @@
 module DecisionTree
 
+using NumericExtensions
 import Base.length, Base.convert, Base.promote_rule, Base.show
 
 export Leaf, Node, print_tree,
@@ -59,15 +60,15 @@ function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights
         inds = [1:nf]
     end
     for i in 1:nf
+        featcur=features[:,inds[i]]
         if (ndp>100)
-          domain_i = quantile(features[:,inds[i]],linspace(0.0,1.0,100))
+          domain_i = quantile(featcur,linspace(0.01,0.99,99))
         else
-          domain_i = sort(unique(features[:,inds[i]]))
+          domain_i = sort(unique(featcur))
         end
         for d in domain_i[2:]
-            cur_split = features[:,inds[i]] .< d
             if weights == [0]
-            	value = _info_gain(labels[cur_split], labels[!cur_split])
+            	value = _info_gain(labels, featcur, d)
             else
             	value = _neg_z1_loss(labels[cur_split], weights[cur_split]) + _neg_z1_loss(labels[!cur_split], weights[!cur_split])
             end
@@ -76,6 +77,14 @@ function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights
                 best = (inds[i], d)
             end
         end
+    end
+    if (best!=None)
+      (a1,a2)=best
+      if all(features[:,a1] .< a2)
+        return None
+      elseif all(features[:,a1] .>= a2)
+        return None
+    end
     end
     return best
 end
@@ -191,10 +200,11 @@ end
 
 function apply_forest{T<:Union(Leaf,Node)}(forest::Vector{T}, features::Vector)
     ntrees = length(forest)
-    votes = Array(Any,ntrees)
+    votes = Array(Float64,ntrees)
     for i in 1:ntrees
         votes[i] = apply_tree(forest[i],features)
     end
+    
     return majority_vote(votes)
 end
 

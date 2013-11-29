@@ -35,11 +35,11 @@ function _set_entropy(labels::Vector)
 end
 
 function _info_gain(labels::Vector, featcur::Vector, d)
-    N0 = length(labels0)
-    N1 = length(labels1)
     cur_split = featcur .< d
     labels0=labels[cur_split]
     labels1=labels[!cur_split]
+    N0 = length(labels0)
+    N1 = length(labels1)
     N = N0 + N1
     H = - N0/N * _set_entropy(labels0) - N1/N * _set_entropy(labels1)
     return H
@@ -68,6 +68,8 @@ function _info_gain{T<:FloatingPoint}(labels::Vector{T}, featcur::Vector, d)
 end
 
 function _neg_z1_loss{T<:Real,S<:Any}(labels::Vector{S}, weights::Vector{T})
+    cur_split = featcur .< d
+    labels0=labels[cur_split]
     missmatches = labels .!= majority_vote(labels)
     loss = sum(weights[missmatches])
     return -loss

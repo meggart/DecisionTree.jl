@@ -11,44 +11,58 @@ export Leaf, Node, print_tree,
 
 include("measures.jl")
 
-type Leaf
+abstract TreeElement
+
+type Leaf <: TreeElement
     majority::Any
     values::Vector
 end
 
-type Node
+type Node <: TreeElement
     featid::Integer
     featval::Any
-    left::Union(Leaf,Node)
-    right::Union(Leaf,Node)
+    left::TreeElement
+    right::TreeElement
 end
 
+abstract LabelVector{T}<:AbstractArray{T,1}
+
+type ContLabel{T}<:LabelVector{T}
+  x::Vector{T}
+end
+
+type ClassLabel{T}<:LabelVector{T}
+  x::Vector{T}
+end
+
+Base.getindex(v::LabelVector,a...)=Base.getindex(v.x,a...)
+Base.setindex(v::LabelVector,a...)=Base.getindex(v.x,a...)
 
 convert(::Type{Node}, x::Leaf) = Node(0, nothing, x, Leaf(nothing,[nothing]))
 promote_rule(::Type{Node}, ::Type{Leaf}) = Node
 promote_rule(::Type{Leaf}, ::Type{Node}) = Node
 
-function length(tree::Union(Leaf,Node))
+function length(tree::TreeElement)
     s = split(string(tree), "Leaf")
     return length(s) - 1
 end
 
-function print_tree(tree::Union(Leaf,Node), indent::Integer)
-    if typeof(tree) == Leaf
-        matches = find(tree.values .== tree.majority)
-        ratio = string(length(matches)) * "/" * string(length(tree.values))
-        println("$(tree.majority) : $(ratio)")
-    else
-        println("Feature $(tree.featid), Threshold $(tree.featval)")
-        print("    " ^ indent * "L-> ")
-        print_tree(tree.left, indent + 1)
-        print("    " ^ indent * "R-> ")
-        print_tree(tree.right, indent + 1)
-    end
+function print_tree(tree::Leaf, indent::Integer)
+    matches = find(tree.values .== tree.majority)
+    ratio = string(length(matches)) * "/" * string(length(tree.values))
+    println("$(tree.majority) : $(ratio)")
 end
-print_tree(tree::Union(Leaf,Node)) = print_tree(tree, 0)
 
-function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights::Vector)
+function print_tree(tree::Node, indent::Integer)
+    println("Feature $(tree.featid), Threshold $(tree.featval)")
+    print("    " ^ indent * "L-> ")
+    print_tree(tree.left, indent + 1)
+    print("    " ^ indent * "R-> ")
+    print_tree(tree.right, indent + 1)
+end
+print_tree(tree::TreeElement) = print_tree(tree, 0)
+
+function _split(labels::LabelVector, features::Matrix, nsubfeatures::Integer, weights::Vector)
     nf = size(features,2)
     ndp= size(features,1)
     best = None
@@ -70,7 +84,7 @@ function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights
             if weights == [0]
             	value = _info_gain(labels, featcur, d)
             else
-            	value = _neg_z1_loss(labels[cur_split], weights[cur_split]) + _neg_z1_loss(labels[!cur_split], weights[!cur_split])
+            	value = _neg_z1_loss(labels, featcur,d,weights)
             end
             if value > best_val
                 best_val = value
@@ -89,7 +103,7 @@ function _split(labels::Vector, features::Matrix, nsubfeatures::Integer, weights
     return best
 end
 
-function build_stump(labels::Vector, features::Matrix, weights::Vector)
+function build_stump(labels::LabelVector, features::Matrix, weights::Vector; mode="classification")
     S = _split(labels, features, 0, weights)
     if S == None
         return Leaf(majority_vote(labels), labels)
@@ -100,9 +114,12 @@ function build_stump(labels::Vector, features::Matrix, weights::Vector)
                 Leaf(majority_vote(labels[split]), labels[split]),
                 Leaf(majority_vote(labels[!split]), labels[!split]))
 end
-build_stump(labels::Vector, features::Matrix) = build_stump(labels, features, [0])
+build_stump(labels::LabelVector, features::Matrix) = build_stump(labels, features, [0])
+build_stump(labels::Vector, features::Matrix; mode="classification") = 
+   mode=="regression" ? build_stump(ContLabel(labels), features, [0],mode=mode) : build_stump(ClassLabel(labels), features, [0],mode=mode)
 
-function build_tree(labels::Vector, features::Matrix, nsubfeatures::Integer)
+
+function build_tree(labels::LabelVector, features::Matrix, nsubfeatures::Integer; mode="classification")
     S = _split(labels, features, nsubfeatures, [0])
     if S == None
         return Leaf(majority_vote(labels), labels)
@@ -131,10 +148,12 @@ function build_tree(labels::Vector, features::Matrix, nsubfeatures::Integer)
                     build_tree(labels_right,features[!split,:], nsubfeatures))
     end
 end
-build_tree(labels::Vector, features::Matrix) = build_tree(labels, features, 0)
+build_tree(labels::LabelVector, features::Matrix; mode="classification") = build_tree(labels, features, 0,mode="classification")
+build_tree(labels::Vector, features::Matrix,nsubfeatures::Integer; mode="classification")=
+  mode=="classification" ? build_tree(ClassLabel(labels),features,nsubfeatures,mode=mode) : build_tree(ContLabel(labels),features,nsubfeatures,mode=mode)
 
-function prune_tree(tree::Union(Leaf,Node), purity_thresh::Real)
-    function _prune_run(tree::Union(Leaf,Node), purity_thresh::Real)
+function prune_tree(tree::TreeElement, purity_thresh::Real)
+    function _prune_run(tree::TreeElement, purity_thresh::Real)
         N = length(tree)
         if N == 1        ## a Leaf
             return tree
@@ -161,9 +180,9 @@ function prune_tree(tree::Union(Leaf,Node), purity_thresh::Real)
     end
     return pruned
 end
-prune_tree(tree::Union(Leaf,Node)) = prune_tree(tree, 1.0) ## defaults to 100% purity pruning
+prune_tree(tree::TreeElement) = prune_tree(tree, 1.0) ## defaults to 100% purity pruning
 
-function apply_tree(tree::Union(Leaf,Node), features::Vector)
+function apply_tree(tree::TreeElement, features::Vector)
     if typeof(tree) == Leaf
         return tree.majority
     elseif tree.featval == nothing
@@ -175,7 +194,7 @@ function apply_tree(tree::Union(Leaf,Node), features::Vector)
     end
 end
 
-function apply_tree(tree::Union(Leaf,Node), features::Matrix)
+function apply_tree(tree::TreeElement, features::Matrix)
     N = size(features,1)
     predictions = Array(Any,N)
     for i in 1:N
@@ -184,7 +203,7 @@ function apply_tree(tree::Union(Leaf,Node), features::Matrix)
     return predictions
 end
 
-function build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer, ntrees::Integer)
+function build_forest(labels::LabelVector, features::Matrix, nsubfeatures::Integer=0, ntrees::Integer,mode="classification")
     Nlabels = length(labels)
     #Nsamples = int(0.7 * Nlabels)
     Nsamples=Nlabels
@@ -194,11 +213,13 @@ function build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer, n
         ###OOB
         
     end
-    
     return [forest]
 end
+build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer=0, ntrees::Integer,mode="classification")=
+mode=="classification" ? build_forest(ClassLabel(labels),features,nsubfeatures,mode=mode) : build_forest(ContLabel(labels),features,nsubfeatures,mode=mode)
 
-function apply_forest{T<:Union(Leaf,Node)}(forest::Vector{T}, features::Vector)
+
+function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Vector)
     ntrees = length(forest)
     votes = Array(Float64,ntrees)
     for i in 1:ntrees
@@ -208,7 +229,7 @@ function apply_forest{T<:Union(Leaf,Node)}(forest::Vector{T}, features::Vector)
     return majority_vote(votes)
 end
 
-function apply_forest{T<:Union(Leaf,Node)}(forest::Vector{T}, features::Matrix)
+function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Matrix)
     N = size(features,1)
     predictions = Array(Any,N)
     for i in 1:N
@@ -217,7 +238,7 @@ function apply_forest{T<:Union(Leaf,Node)}(forest::Vector{T}, features::Matrix)
     return predictions
 end
 
-function build_adaboost_stumps(labels::Vector, features::Matrix, niterations::Integer)
+function build_adaboost_stumps(labels::LabelVector, features::Matrix, niterations::Integer)
     N = length(labels)
     weights = ones(N) / N
     stumps = Node[]
@@ -240,7 +261,7 @@ function build_adaboost_stumps(labels::Vector, features::Matrix, niterations::In
     return (stumps, coeffs)
 end
 
-function apply_adaboost_stumps{T<:Union(Leaf,Node)}(stumps::Vector{T}, coeffs::Vector{FloatingPoint}, features::Vector)
+function apply_adaboost_stumps{T<:TreeElement}(stumps::Vector{T}, coeffs::Vector{FloatingPoint}, features::Vector)
     nstumps = length(stumps)
     counts = Dict()
     for i in 1:nstumps
@@ -258,7 +279,7 @@ function apply_adaboost_stumps{T<:Union(Leaf,Node)}(stumps::Vector{T}, coeffs::V
     return top_prediction
 end
 
-function apply_adaboost_stumps{T<:Union(Leaf,Node)}(stumps::Vector{T}, coeffs::Vector{FloatingPoint}, features::Matrix)
+function apply_adaboost_stumps{T<:TreeElement}(stumps::Vector{T}, coeffs::Vector{FloatingPoint}, features::Matrix)
     N = size(features,1)
     predictions = Array(Any,N)
     for i in 1:N

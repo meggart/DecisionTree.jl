@@ -68,7 +68,7 @@ function _info_gain{T<:FloatingPoint}(labels::Vector{T}, featcur::Vector, d)
 end
 
 function _neg_z1_loss{T<:Real,S<:Any}(labels::Vector{S}, weights::Vector{T})
-    missmatches = labels .!= majority_vote(labels)
+    missmatches = labels .!= ensemble_vote(labels)
     loss = sum(weights[missmatches])
     return -loss
 end
@@ -76,7 +76,7 @@ end
 function _neg_z1_loss{T<:Real,S<:FloatingPoint}(labels::Vector{S}, weights::Vector{T})
     s1=0.0
     s2=0.0
-    mv=majority_vote(labels)
+    mv=ensemble_vote(labels)
     for i=1:length(labels)
       s1=s1+(labels[i]-mv)^2*weights[i]
       s2=s2+weights[i]
@@ -91,7 +91,7 @@ function _weighted_error{T<:Real}(actual::Vector, predicted::Vector, weights::Ve
     return err
 end
 
-function majority_vote(labels::Vector)
+function ensemble_vote(labels::Vector)
     counts = Dict()
     for i in labels
         counts[i] = get(counts, i, 0) + 1
@@ -107,7 +107,7 @@ function majority_vote(labels::Vector)
     return top_vote
 end
 
-function majority_vote{T<:FloatingPoint}(labels::Vector{T}) 
+function ensemble_vote{T<:FloatingPoint}(labels::Vector{T}) 
      return mean(labels) 
 end
 

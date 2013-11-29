@@ -9,6 +9,19 @@ export Leaf, Node, print_tree,
        build_adaboost_stumps, apply_adaboost_stumps, nfoldCV_stumps,
        ensemble_vote, ConfusionMatrix, confusion_matrix
 
+abstract LabelVector{T}
+
+type ContLabel{T}<:LabelVector{T}
+  x::Vector{T}
+end
+
+type ClassLabel{T}<:LabelVector{T}
+  x::Vector{T}
+end
+Base.getindex(v::LabelVector,a...)=Base.getindex(v.x,a...)
+Base.setindex!(v::LabelVector,a...)=Base.getindex(v.x,a...)
+
+
 include("measures.jl")
 
 abstract TreeElement
@@ -24,19 +37,6 @@ type Node <: TreeElement
     left::TreeElement
     right::TreeElement
 end
-
-abstract LabelVector{T}<:AbstractArray{T,1}
-
-type ContLabel{T}<:LabelVector{T}
-  x::Vector{T}
-end
-
-type ClassLabel{T}<:LabelVector{T}
-  x::Vector{T}
-end
-
-Base.getindex(v::LabelVector,a...)=Base.getindex(v.x,a...)
-Base.setindex(v::LabelVector,a...)=Base.getindex(v.x,a...)
 
 convert(::Type{Node}, x::Leaf) = Node(0, nothing, x, Leaf(nothing,[nothing]))
 promote_rule(::Type{Node}, ::Type{Leaf}) = Node
@@ -203,8 +203,8 @@ function apply_tree(tree::TreeElement, features::Matrix)
     return predictions
 end
 
-function build_forest(labels::LabelVector, features::Matrix, nsubfeatures::Integer=0, ntrees::Integer,mode="classification")
-    Nlabels = length(labels)
+function build_forest(labels::LabelVector, features::Matrix, nsubfeatures::Integer, ntrees::Integer; mode="classification")
+    Nlabels = length(labels.x)
     #Nsamples = int(0.7 * Nlabels)
     Nsamples=Nlabels
     forest = @parallel (vcat) for i in [1:ntrees]
@@ -215,9 +215,9 @@ function build_forest(labels::LabelVector, features::Matrix, nsubfeatures::Integ
     end
     return [forest]
 end
-build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer=0, ntrees::Integer,mode="classification")=
-mode=="classification" ? build_forest(ClassLabel(labels),features,nsubfeatures,mode=mode) : build_forest(ContLabel(labels),features,nsubfeatures,mode=mode)
-
+build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer, ntrees::Integer;mode="classification")=
+  out = mode=="classification" ? build_forest(ClassLabel(labels),features,nsubfeatures,ntrees,mode=mode) :
+  build_forest(ContLabel(labels),features,nsubfeatures,ntrees,mode=mode)
 
 function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Vector)
     ntrees = length(forest)
@@ -225,8 +225,7 @@ function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Vector)
     for i in 1:ntrees
         votes[i] = apply_tree(forest[i],features)
     end
-    
-    return ensemble_vote(votes)
+    return ensemble_vote(ContLabel(votes))
 end
 
 function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Matrix)

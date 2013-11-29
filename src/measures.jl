@@ -34,10 +34,10 @@ function _set_entropy(labels::Vector)
     return entropy
 end
 
-function _info_gain(labels::Vector, featcur::Vector, d)
+function _info_gain(labels::ClassLabel, featcur::Vector, d)
     cur_split = featcur .< d
-    labels0=labels[cur_split]
-    labels1=labels[!cur_split]
+    labels0=labels.x[cur_split]
+    labels1=labels.x[!cur_split]
     N0 = length(labels0)
     N1 = length(labels1)
     N = N0 + N1
@@ -45,21 +45,22 @@ function _info_gain(labels::Vector, featcur::Vector, d)
     return H
 end
 
-function _info_gain{T<:FloatingPoint}(labels::Vector{T}, featcur::Vector, d)
+function _info_gain{T}(labels::ContLabel{T}, featcur::Vector, d)
     s1l=0.0
     s1r=0.0
     nl=0
     s2l=0.0
     s2r=0.0
     nr=0
-    for i=1:length(labels)
+    x::Vector{T}=labels.x
+    for i=1:length(x)
       if (featcur[i]<d)
-        s1l=s1l+labels[i]*labels[i]
-        s2l=s2l+labels[i]
+        s1l=s1l+x[i]*x[i]
+        s2l=s2l+x[i]
         nl=nl+1
       else
-        s1r=s1r+labels[i]*labels[i]
-        s2r=s2r+labels[i]
+        s1r=s1r+x[i]*x[i]
+        s2r=s2r+x[i]
         nr=nr+1
       end
     end
@@ -67,21 +68,21 @@ function _info_gain{T<:FloatingPoint}(labels::Vector{T}, featcur::Vector, d)
     return -loss
 end
 
-function _neg_z1_loss{T<:Real,S<:Any}(labels::Vector{S}, weights::Vector{T})
-    missmatches = labels .!= ensemble_vote(labels)
+function _neg_z1_loss{T<:Real}(labels::ClassLabel, weights::Vector{T})
+    missmatches = labels.x .!= ensemble_vote(labels.x)
     loss = sum(weights[missmatches])
     return -loss
 end
 
-function _neg_z1_loss{T<:Real,S<:FloatingPoint}(labels::Vector{S}, weights::Vector{T})
+function _neg_z1_loss{T<:Real}(labels::ContLabel, weights::Vector{T})
     s1=0.0
     s2=0.0
     mv=ensemble_vote(labels)
-    for i=1:length(labels)
-      s1=s1+(labels[i]-mv)^2*weights[i]
+    for i=1:length(labels.x)
+      s1=s1+(labels.x[i]-mv)^2*weights[i]
       s2=s2+weights[i]
     end
-    loss = s1/s2*length(labels)
+    loss = s1/s2*length(labels.x)
     return -loss
 end
 
@@ -91,9 +92,9 @@ function _weighted_error{T<:Real}(actual::Vector, predicted::Vector, weights::Ve
     return err
 end
 
-function ensemble_vote(labels::Vector)
+function ensemble_vote(labels::ClassLabel)
     counts = Dict()
-    for i in labels
+    for i in labels.x
         counts[i] = get(counts, i, 0) + 1
     end
     top_vote = None
@@ -107,8 +108,8 @@ function ensemble_vote(labels::Vector)
     return top_vote
 end
 
-function ensemble_vote{T<:FloatingPoint}(labels::Vector{T}) 
-     return mean(labels) 
+function ensemble_vote(labels::ContLabel) 
+     return mean(labels.x) 
 end
 
 function confusion_matrix(actual::Vector, predicted::Vector)

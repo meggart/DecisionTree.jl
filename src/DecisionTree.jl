@@ -7,7 +7,7 @@ export Leaf, Node, print_tree,
        build_stump, build_tree, prune_tree, apply_tree, nfoldCV_tree,
        build_forest, apply_forest, nfoldCV_forest,
        build_adaboost_stumps, apply_adaboost_stumps, nfoldCV_stumps,
-       majority_vote, ConfusionMatrix, confusion_matrix
+       ensemble_vote, ConfusionMatrix, confusion_matrix
 
 include("measures.jl")
 
@@ -106,13 +106,13 @@ end
 function build_stump(labels::LabelVector, features::Matrix, weights::Vector; mode="classification")
     S = _split(labels, features, 0, weights)
     if S == None
-        return Leaf(majority_vote(labels), labels)
+        return Leaf(ensemble_vote(labels), labels)
     end
     id, thresh = S
     split = features[:,id] .< thresh
     return Node(id, thresh,
-                Leaf(majority_vote(labels[split]), labels[split]),
-                Leaf(majority_vote(labels[!split]), labels[!split]))
+                Leaf(ensemble_vote(labels[split]), labels[split]),
+                Leaf(ensemble_vote(labels[!split]), labels[!split]))
 end
 build_stump(labels::LabelVector, features::Matrix) = build_stump(labels, features, [0])
 build_stump(labels::Vector, features::Matrix; mode="classification") = 
@@ -122,7 +122,7 @@ build_stump(labels::Vector, features::Matrix; mode="classification") =
 function build_tree(labels::LabelVector, features::Matrix, nsubfeatures::Integer; mode="classification")
     S = _split(labels, features, nsubfeatures, [0])
     if S == None
-        return Leaf(majority_vote(labels), labels)
+        return Leaf(ensemble_vote(labels), labels)
     end
     id, thresh = S
     split = features[:,id] .< thresh
@@ -159,7 +159,7 @@ function prune_tree(tree::TreeElement, purity_thresh::Real)
             return tree
         elseif N == 2    ## a stump
             all_labels = [tree.left.values, tree.right.values]
-            majority = majority_vote(all_labels)
+            majority = ensemble_vote(all_labels)
             matches = find(all_labels .== majority)
             purity = length(matches) / length(all_labels)
             if purity >= purity_thresh
@@ -226,7 +226,7 @@ function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Vector)
         votes[i] = apply_tree(forest[i],features)
     end
     
-    return majority_vote(votes)
+    return ensemble_vote(votes)
 end
 
 function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Matrix)

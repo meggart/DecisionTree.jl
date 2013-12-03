@@ -184,18 +184,53 @@ function apply_tree(tree::Union(Leaf,Node), features::Matrix)
     return predictions
 end
 
+function _build_forest_trees(labelRef,featureRef,nsubRef,nsref)
+  
+  
+  
+  
+  labels=fetch(labelRef)
+  features=fetch(featureRef)
+  nsubfeatures=fetch(nsubRef)
+  ns=fetch(nsref)
+  
+  Nlabels = length(labels)
+  Nsamples = Nlabels
+  
+  o=Array(Any,ns)
+  
+  for i=1:ns
+    inds = rand(1:Nlabels, Nsamples)
+    o[i]=build_tree(labels[inds], features[inds,:], nsubfeatures)
+  end
+
+  return(o)
+end
+
 function build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer, ntrees::Integer)
-    Nlabels = length(labels)
-    #Nsamples = int(0.7 * Nlabels)
-    Nsamples=Nlabels
-    forest = @parallel (vcat) for i in [1:ntrees]
-        inds = rand(1:Nlabels, Nsamples)
-        t=build_tree(labels[inds], features[inds,:], nsubfeatures)
-        ###OOB
-        
+    
+    #First push data to all processors
+    labelrefs = [RemoteRef(i) for i = 1: nprocs()]
+    featurerefs=[RemoteRef(i) for i = 1: nprocs()]
+    nsubref    =[RemoteRef(i) for i = 1: nprocs()]
+    ntreesref  =[RemoteRef(i) for i = 1: nprocs()]
+    ran = Base.splitrange(ntrees,nprocs())
+    for i = 1: nprocs()
+      put(labelrefs[i], labels)
+      put(featurerefs[i],features)
+      put(nsubref[i],nsubfeatures)
+      put(ntreesref[i],length(ran[i]))
     end
     
-    return [forest]
+    @sync begin
+    remforest=[@spawnat i _build_forest_trees(labelrefs[i],featurerefs[i],nsubref[i],ntreesref[i]) for i = 1: nprocs()]
+    end
+    forest=Array(Union(Node,Leaf),ntrees)
+    i=1
+    for i = 1:length(ran)
+      forest[ran[i]]=fetch(remforest[i])
+    end
+    return forest
 end
 
 function apply_forest{T<:Union(Leaf,Node)}(forest::Vector{T}, features::Vector)

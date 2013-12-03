@@ -185,10 +185,7 @@ function apply_tree(tree::Union(Leaf,Node), features::Matrix)
 end
 
 function _build_forest_trees(labelRef,featureRef,nsubRef,nsref)
-  
-  
-  
-  
+
   labels=fetch(labelRef)
   features=fetch(featureRef)
   nsubfeatures=fetch(nsubRef)

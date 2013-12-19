@@ -26,14 +26,14 @@ include("measures.jl")
 
 abstract TreeElement
 
-type Leaf <: TreeElement
-    majority::Any
-    values::Vector
+type Leaf{T} <: TreeElement
+    majority::T
+    values::Vector{T}
 end
 
-type Node <: TreeElement
+type Node{T} <: TreeElement
     featid::Integer
-    featval::Any
+    featval::T
     left::TreeElement
     right::TreeElement
 end
@@ -137,15 +137,15 @@ function build_tree(labels::LabelVector, features::Matrix, nsubfeatures::Integer
     elseif pure_left
         return Node(id, thresh,
                     Leaf(labels_left[1], labels_left),
-                    build_tree(labels_right,features[!split,:], nsubfeatures))
+                    build_tree(labels_right,features[!split,:], nsubfeatures,mode=mode))
     elseif pure_right
         return Node(id, thresh,
-                    build_tree(labels_left,features[split,:], nsubfeatures),
+                    build_tree(labels_left,features[split,:], nsubfeatures,mode=mode),
                     Leaf(labels_right[1], labels_right))
     else
         return Node(id, thresh,
-                    build_tree(labels_left,features[split,:], nsubfeatures),
-                    build_tree(labels_right,features[!split,:], nsubfeatures))
+                    build_tree(labels_left,features[split,:], nsubfeatures,mode=mode),
+                    build_tree(labels_right,features[!split,:], nsubfeatures,mode=mode))
     end
 end
 build_tree(labels::LabelVector, features::Matrix; mode="classification") = build_tree(labels, features, 0,mode="classification")
@@ -209,16 +209,16 @@ function build_forest(labels::LabelVector, features::Matrix, nsubfeatures::Integ
     Nsamples=Nlabels
     forest = @parallel (vcat) for i in [1:ntrees]
         inds = rand(1:Nlabels, Nsamples)
-        t=build_tree(labels[inds], features[inds,:], nsubfeatures)
-        ###OOB
-        
+        build_tree(labels[inds], features[inds,:], nsubfeatures,mode=mode)
     end
     return [forest]
 end
 build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer, ntrees::Integer;mode="classification")=
-  out = mode=="classification" ? build_forest(ClassLabel(labels),features,nsubfeatures,ntrees,mode=mode) :
-  build_forest(ContLabel(labels),features,nsubfeatures,ntrees,mode=mode)
-
+  begin
+    mode=="classification" ? build_forest(ClassLabel(labels),features,nsubfeatures,ntrees,mode=mode) :
+    build_forest(ContLabel(labels),features,nsubfeatures,ntrees,mode=mode)
+  end
+  
 function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Vector)
     ntrees = length(forest)
     votes = Array(Float64,ntrees)

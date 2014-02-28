@@ -9,34 +9,45 @@ export Leaf, Node, print_tree,
        build_adaboost_stumps, apply_adaboost_stumps, nfoldCV_stumps,
        ensemble_vote, ConfusionMatrix, confusion_matrix
 
-abstract LabelVector{T}
+abstract LabelVector{T,A<:Vector}
 
-type ContLabel{T}<:LabelVector{T}
-  x::Vector{T}
+type ContLabel{T<:Number,A<:Vector}<:LabelVector{T,A}
+  x::A
 end
+ContLabel(x::Vector) = ContLabel{eltype(x),typeof(x)}(x)
 
-type ClassLabel{T}<:LabelVector{T}
-  x::Vector{T}
+type ClassLabel{T,A<:Vector}<:LabelVector{T,A}
+  x::A
 end
+ClassLabel(x::Vector) = ClassLabel{eltype(x),typeof(x)}(x)
+
 Base.getindex(v::LabelVector,a...)=Base.getindex(v.x,a...)
 Base.setindex!(v::LabelVector,a...)=Base.getindex(v.x,a...)
 
 
 include("measures.jl")
 
-abstract TreeElement
+abstract TreeElement{T}
 
-type Leaf{T} <: TreeElement
-    majority::T
-    values::Vector{T}
+type Leaf{T} <: TreeElement{T}
+    majority :: T
+    values   :: Vector{T}
 end
 
-type Node{T} <: TreeElement
-    featid::Integer
-    featval::T
-    left::TreeElement
-    right::TreeElement
+type Node{T} <: TreeElement{T}
+    featid   :: Integer
+    featval  :: T
+    left     :: TreeElement
+    right    :: TreeElement
 end
+getLabelType{T}(x::TreeElement{T})=T
+
+type RandomForest{T<:TreeElement,S<:Vector,U}
+    trees     :: S
+    inds      :: Array{Int,2}
+end
+RandomForest(trees::AbstractVector,inds::Array{Int,2})=RandomForest{eltype(trees),typeof(trees),getLabelType(trees[1])}(trees,inds)
+
 
 convert(::Type{Node}, x::Leaf) = Node(0, nothing, x, Leaf(nothing,[nothing]))
 promote_rule(::Type{Node}, ::Type{Leaf}) = Node
@@ -182,8 +193,8 @@ function prune_tree(tree::TreeElement, purity_thresh::Real)
 end
 prune_tree(tree::TreeElement) = prune_tree(tree, 1.0) ## defaults to 100% purity pruning
 
-function apply_tree(tree::TreeElement, features::Vector)
-    if typeof(tree) == Leaf
+function apply_tree{T}(tree::TreeElement{T}, features::Vector)
+    if typeof(tree) == Leaf{T}
         return tree.majority
     elseif tree.featval == nothing
         return apply_tree(tree.left, features)
@@ -194,9 +205,9 @@ function apply_tree(tree::TreeElement, features::Vector)
     end
 end
 
-function apply_tree(tree::TreeElement, features::Matrix)
+function apply_tree{T}(tree::TreeElement{T}, features::Matrix)
     N = size(features,1)
-    predictions = Array(Any,N)
+    predictions = Array(T,N)
     for i in 1:N
         predictions[i] = apply_tree(tree, squeeze(features[i,:],1))
     end
@@ -205,36 +216,68 @@ end
 
 function build_forest(labels::LabelVector, features::Matrix, nsubfeatures::Integer, ntrees::Integer; mode="classification")
     Nlabels = length(labels.x)
-    #Nsamples = int(0.7 * Nlabels)
     Nsamples=Nlabels
+    inds = rand(1:Nlabels, Nsamples,ntrees)
     forest = @parallel (vcat) for i in [1:ntrees]
-        inds = rand(1:Nlabels, Nsamples)
-        build_tree(labels[inds], features[inds,:], nsubfeatures,mode=mode)
+        build_tree(labels[inds[:,i]], features[inds[:,i],:], nsubfeatures,mode=mode)
     end
-    return [forest]
+    
+    return RandomForest(forest,inds)
 end
+
 build_forest(labels::Vector, features::Matrix, nsubfeatures::Integer, ntrees::Integer;mode="classification")=
-  begin
     mode=="classification" ? build_forest(ClassLabel(labels),features,nsubfeatures,ntrees,mode=mode) :
     build_forest(ContLabel(labels),features,nsubfeatures,ntrees,mode=mode)
-  end
   
-function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Vector)
-    ntrees = length(forest)
-    votes = Array(Float64,ntrees)
+function apply_forest{S,T,U}(forest::RandomForest{S,T,U}, features::Vector)
+    ntrees = length(forest.trees)
+    votes = Array(U,ntrees)
     for i in 1:ntrees
-        votes[i] = apply_tree(forest[i],features)
+        votes[i] = apply_tree(forest.trees[i],features)
     end
     return ensemble_vote(ContLabel(votes))
 end
 
-function apply_forest{T<:TreeElement}(forest::Vector{T}, features::Matrix)
+function apply_forest{S,T,U}(forest::RandomForest{S,T,U}, features::Matrix)
     N = size(features,1)
-    predictions = Array(Any,N)
+    predictions = Array(U,N)
     for i in 1:N
         predictions[i] = apply_forest(forest, squeeze(features[i,:],1))
     end
     return predictions
+end
+
+function oob(forest::RandomForest, features::Matrix)
+    nobs   = size(forest.inds,1)
+    ntree  = size(forest.inds,2)
+    allinds= IntSet((1:nobs)...)
+    unused   = falses(nobs,ntree)
+    # Loop over all trees to find unused obs
+    for i = 1:ntree
+      iUnused = setdiff(allinds,IntSet(forest.inds[:,i]...))
+      for j in iUnused
+        unused[j,i] = true
+      end
+    end
+    predictions = Array(getLabelType(forest.trees[1]),nobs)
+    # Loop over observations
+    for j in 1:nobs
+      # Use only unused trees
+      votes   = Array(getLabelType(forest.trees[1]),sum(unused[j,:]))
+      n=1
+      for i in 1:ntree
+        if (unused[j,i])
+          votes[n] = apply_tree(forest.trees[i],squeeze(features[j,:],1))
+          n = n+1
+        end
+      end
+      if (length(votes)>0)
+        predictions[j] = ensemble_vote(ContLabel(votes))
+      else
+        warning("Out-of-Bag prediction not possible for $(j)th element!")
+      end
+    end
+    predictions
 end
 
 function build_adaboost_stumps(labels::LabelVector, features::Matrix, niterations::Integer)
